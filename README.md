@@ -13,6 +13,17 @@ bases.
 Install it from the
 [RailCall Marketplace](https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations).
 
+## Self-serve operations pack
+
+TinyOps offers a $49 operations pack for teams that can install the module but
+want a concrete permission matrix, approval worksheet, ten-command smoke-test
+plan, operator runbook, rollback procedure, and editable evidence records.
+
+The download contains 13 files and is designed for one GitHub.com or HTTPS
+GitHub Enterprise repository. The signed runtime module remains free.
+
+[Get the RailCall GitHub Operations Pack](https://tinyopsstudio.gumroad.com/l/railcall-github-operations-pack?utm_source=github&utm_medium=repository&utm_campaign=railcall_operations_pack_launch&utm_content=readme)
+
 ## Managed setup
 
 TinyOps offers a fixed-scope $499 setup for one repository when a team wants
