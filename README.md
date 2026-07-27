@@ -13,6 +13,17 @@ bases.
 Install it from the
 [RailCall Marketplace](https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations).
 
+## Managed setup
+
+TinyOps offers a fixed-scope $499 setup for one repository when a team wants
+the module configured and verified rather than installing it alone. The
+delivery includes a repository permission map, approval matrix, bounded command
+configuration, smoke-test results, and an operator runbook.
+
+Your GitHub credentials remain in your own RailCall vault. Review the exact
+scope and send non-secret workflow details on the
+[managed setup page](https://tinyopsstudio.com/railcall-github-delivery-operations-setup).
+
 ## Commands
 
 | Command | Effect |
