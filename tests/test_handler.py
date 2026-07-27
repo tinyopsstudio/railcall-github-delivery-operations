@@ -1,0 +1,358 @@
+from __future__ import annotations
+
+import base64
+import importlib.util
+import io
+import json
+from pathlib import Path
+import unittest
+import urllib.error
+
+
+MODULE_DIR = Path(__file__).resolve().parents[1]
+HANDLER_PATH = MODULE_DIR / "handlers" / "handler.py"
+MANIFEST_PATH = MODULE_DIR / "module.json"
+
+VAULT = {}
+
+
+def _vault_get(provider):
+    return VAULT.get(provider)
+
+
+spec = importlib.util.spec_from_file_location("github_delivery_handler", HANDLER_PATH)
+handler = importlib.util.module_from_spec(spec)
+handler.__dict__["__rc_helpers__"] = {"vault_get": _vault_get}
+spec.loader.exec_module(handler)
+
+
+class FakeResponse:
+    def __init__(self, status, payload=None):
+        self.status = status
+        if payload is None:
+            self.raw = b""
+        elif isinstance(payload, bytes):
+            self.raw = payload
+        else:
+            self.raw = json.dumps(payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def getcode(self):
+        return self.status
+
+    def read(self):
+        return self.raw
+
+
+def http_error(code, payload, headers=None):
+    raw = json.dumps(payload).encode("utf-8")
+    return urllib.error.HTTPError(
+        "https://api.github.com/test",
+        code,
+        "error",
+        headers or {},
+        io.BytesIO(raw),
+    )
+
+
+class GitHubDeliveryHandlerTests(unittest.TestCase):
+    def setUp(self):
+        VAULT.clear()
+        VAULT["github"] = {
+            "token": "g" * 40,
+            "owner": "tinyopsstudio",
+            "repo": "module-test",
+        }
+        self.calls = []
+        handler._SLEEP = lambda _seconds: None
+
+    def route(self, *items):
+        remaining = list(items)
+
+        def fake_urlopen(request, timeout=0):
+            self.calls.append((request, timeout))
+            if not remaining:
+                raise AssertionError("unexpected HTTP request")
+            item = remaining.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        handler._URLOPEN = fake_urlopen
+
+    def request_json(self, index=0):
+        request = self.calls[index][0]
+        return json.loads((request.data or b"{}").decode("utf-8"))
+
+    def test_manifest_exposes_ten_matching_commands(self):
+        manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        commands = manifest["commands"]
+        self.assertEqual(10, len(commands))
+        self.assertEqual(10, len({item["id"] for item in commands}))
+        for command in commands:
+            function_name = command["id"].replace(".", "_").replace("-", "_")
+            self.assertTrue(callable(getattr(handler, function_name, None)))
+            self.assertTrue(command["preview"])
+            self.assertTrue(command["receipt_required"])
+            if command["mode"] != "read":
+                self.assertEqual("write_requires_approval", command["mode"])
+
+    def test_get_issue_uses_vault_header_and_compacts_response(self):
+        self.route(
+            FakeResponse(
+                200,
+                {
+                    "number": 7,
+                    "title": "Ship module",
+                    "state": "open",
+                    "html_url": "https://github.com/tinyopsstudio/module-test/issues/7",
+                    "user": {"login": "tinyopsstudio"},
+                    "assignees": [{"login": "reviewer"}],
+                    "labels": [{"name": "delivery"}],
+                    "comments": 2,
+                    "created_at": "2026-07-26T00:00:00Z",
+                    "updated_at": "2026-07-26T01:00:00Z",
+                },
+            )
+        )
+
+        result, artifact = handler.github_get_issue({"issue_number": 7}, {})
+
+        self.assertIsNone(artifact)
+        self.assertTrue(result["ok"])
+        self.assertEqual("Ship module", result["issue"]["title"])
+        self.assertEqual(["delivery"], result["issue"]["labels"])
+        request = self.calls[0][0]
+        self.assertEqual("GET", request.method)
+        self.assertTrue(request.full_url.endswith("/repos/tinyopsstudio/module-test/issues/7"))
+        self.assertNotIn("g" * 40, request.full_url)
+        self.assertEqual("Bearer " + ("g" * 40), request.get_header("Authorization"))
+
+    def test_read_retries_rate_limit_but_stops_after_success(self):
+        self.route(
+            http_error(429, {"message": "secondary rate limit"}, {"Retry-After": "0"}),
+            FakeResponse(
+                200,
+                [
+                    {
+                        "number": 4,
+                        "title": "Module release",
+                        "state": "open",
+                        "head": {"ref": "module", "sha": "a" * 40},
+                        "base": {"ref": "main"},
+                    }
+                ],
+            ),
+        )
+
+        result, _artifact = handler.github_list_pull_requests(
+            {"state": "open", "per_page": 10},
+            {},
+        )
+
+        self.assertEqual(2, len(self.calls))
+        self.assertEqual(1, result["count"])
+        self.assertIn("per_page=10", self.calls[-1][0].full_url)
+
+    def test_write_transport_failure_is_not_retried(self):
+        self.route(urllib.error.URLError("timed out"))
+
+        with self.assertRaisesRegex(RuntimeError, "outcome is unknown"):
+            handler.github_add_issue_comment(
+                {"issue_number": 3, "body": "Status update"},
+                {},
+            )
+
+        self.assertEqual(1, len(self.calls))
+
+    def test_write_server_error_is_reported_as_ambiguous(self):
+        self.route(http_error(503, {"message": "upstream unavailable"}))
+
+        with self.assertRaisesRegex(RuntimeError, "outcome is unknown"):
+            handler.github_update_issue(
+                {"issue_number": 3, "state": "closed"},
+                {},
+            )
+
+        self.assertEqual(1, len(self.calls))
+
+    def test_update_issue_requires_a_real_change(self):
+        with self.assertRaisesRegex(RuntimeError, "at least one"):
+            handler.github_update_issue({"issue_number": 3}, {})
+        self.assertEqual([], self.calls)
+
+    def test_create_pull_request_shapes_approved_write(self):
+        self.route(
+            FakeResponse(
+                201,
+                {
+                    "number": 11,
+                    "title": "Add GitHub module",
+                    "state": "open",
+                    "draft": True,
+                    "html_url": "https://github.com/tinyopsstudio/module-test/pull/11",
+                    "head": {"ref": "railcall-module", "sha": "b" * 40},
+                    "base": {"ref": "main"},
+                },
+            )
+        )
+
+        result, _artifact = handler.github_create_pull_request(
+            {
+                "title": "Add GitHub module",
+                "head": "railcall-module",
+                "base": "main",
+                "body": "Reviewed delivery module.",
+                "draft": True,
+            },
+            {},
+        )
+
+        self.assertEqual("POST", self.calls[0][0].method)
+        self.assertEqual(
+            {
+                "title": "Add GitHub module",
+                "head": "railcall-module",
+                "base": "main",
+                "body": "Reviewed delivery module.",
+                "draft": True,
+            },
+            self.request_json(),
+        )
+        self.assertEqual(11, result["pull_request"]["number"])
+
+    def test_review_request_rejects_empty_audience(self):
+        with self.assertRaisesRegex(RuntimeError, "at least one reviewer"):
+            handler.github_request_pull_request_reviewers(
+                {"pull_number": 11, "reviewers": [], "team_reviewers": []},
+                {},
+            )
+
+    def test_merge_uses_expected_head_sha(self):
+        expected_sha = "c" * 40
+        self.route(
+            FakeResponse(
+                200,
+                {"sha": "d" * 40, "merged": True, "message": "Pull Request successfully merged"},
+            )
+        )
+
+        result, _artifact = handler.github_merge_pull_request(
+            {
+                "pull_number": 11,
+                "merge_method": "squash",
+                "expected_head_sha": expected_sha,
+            },
+            {},
+        )
+
+        self.assertEqual("PUT", self.calls[0][0].method)
+        self.assertEqual(
+            {"merge_method": "squash", "sha": expected_sha},
+            self.request_json(),
+        )
+        self.assertTrue(result["merged"])
+
+    def test_dispatch_workflow_accepts_scalar_inputs_and_empty_response(self):
+        self.route(FakeResponse(204))
+
+        result, _artifact = handler.github_dispatch_workflow(
+            {
+                "workflow_id": "release.yml",
+                "ref": "main",
+                "inputs": {"environment": "staging", "dry_run": True},
+            },
+            {},
+        )
+
+        request = self.calls[0][0]
+        self.assertEqual("POST", request.method)
+        self.assertIn("/actions/workflows/release.yml/dispatches", request.full_url)
+        self.assertEqual(
+            {
+                "ref": "main",
+                "inputs": {"environment": "staging", "dry_run": True},
+            },
+            self.request_json(),
+        )
+        self.assertEqual(204, result["http_status"])
+
+    def test_put_file_base64_encodes_utf8_and_returns_commit(self):
+        self.route(
+            FakeResponse(
+                201,
+                {
+                    "content": {
+                        "path": "docs/release.txt",
+                        "sha": "e" * 40,
+                        "html_url": "https://github.com/example/content",
+                    },
+                    "commit": {
+                        "sha": "f" * 40,
+                        "html_url": "https://github.com/example/commit",
+                    },
+                },
+            )
+        )
+
+        result, _artifact = handler.github_put_file(
+            {
+                "path": "docs/release.txt",
+                "message": "Add release note",
+                "content": "ready\n",
+                "branch": "module",
+            },
+            {},
+        )
+
+        request_body = self.request_json()
+        self.assertEqual(
+            b"ready\n",
+            base64.b64decode(request_body["content"].encode("ascii")),
+        )
+        self.assertEqual("module", request_body["branch"])
+        self.assertEqual("f" * 40, result["commit_sha"])
+
+    def test_put_file_rejects_parent_traversal(self):
+        with self.assertRaisesRegex(RuntimeError, "parent"):
+            handler.github_put_file(
+                {
+                    "path": "../secret.txt",
+                    "message": "Invalid",
+                    "content": "no",
+                },
+                {},
+            )
+
+    def test_enterprise_api_base_is_vault_only(self):
+        VAULT["github"]["api_url"] = "https://github.example.test/api/v3"
+        self.route(FakeResponse(200, {"number": 2, "title": "Enterprise", "state": "open"}))
+
+        handler.github_get_issue({"issue_number": 2}, {})
+
+        self.assertTrue(
+            self.calls[0][0].full_url.startswith(
+                "https://github.example.test/api/v3/repos/"
+            )
+        )
+
+    def test_token_never_appears_in_an_error(self):
+        token = VAULT["github"]["token"]
+        self.route(http_error(422, {"message": "Validation Failed"}))
+
+        with self.assertRaises(RuntimeError) as raised:
+            handler.github_create_pull_request(
+                {"title": "Bad", "head": "missing", "base": "main"},
+                {},
+            )
+
+        self.assertNotIn(token, str(raised.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()

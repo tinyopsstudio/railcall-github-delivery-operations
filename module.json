@@ -1,0 +1,362 @@
+{
+  "id": "tinyops-studio-llc/github-delivery-operations",
+  "name": "GitHub Delivery Operations - governed issues, pull requests, workflows, and files",
+  "version": "1.0.0",
+  "description": "Ten production-oriented GitHub delivery operations that complement RailCall's built-in issue commands. Read issues and pull requests, update work, create and review pull requests, merge with an expected SHA, dispatch Actions workflows, and create or update repository files. Credentials stay in RailCall's local vault, reads use bounded retries, and writes fail closed on ambiguous transport outcomes. Supports GitHub.com and HTTPS GitHub Enterprise API bases. contest:2026Q3",
+  "provider": "github",
+  "publisher_pubkey": "47e411915723b7727bad3568f592fac50d79a2f35c7ad65216fa4c93acf7f059",
+  "license_required": false,
+  "commands": [
+    {
+      "id": "github.get_issue",
+      "title": "Read one GitHub issue or pull-request issue record",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "issue_number": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "issue": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.update_issue",
+      "title": "Update a GitHub issue title, body, or state",
+      "provider": "github",
+      "risk": "medium",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "issue_number": {
+          "type": "number",
+          "required": true
+        },
+        "title": {
+          "type": "string",
+          "required": false
+        },
+        "body": {
+          "type": "string",
+          "required": false
+        },
+        "state": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "issue": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.add_issue_comment",
+      "title": "Add a comment to a GitHub issue or pull request",
+      "provider": "github",
+      "risk": "medium",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "issue_number": {
+          "type": "number",
+          "required": true
+        },
+        "body": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "comment_id": "number",
+        "html_url": "string",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.list_pull_requests",
+      "title": "List GitHub pull requests with bounded filters",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "state": {
+          "type": "string",
+          "required": false
+        },
+        "head": {
+          "type": "string",
+          "required": false
+        },
+        "base": {
+          "type": "string",
+          "required": false
+        },
+        "sort": {
+          "type": "string",
+          "required": false
+        },
+        "direction": {
+          "type": "string",
+          "required": false
+        },
+        "per_page": {
+          "type": "number",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "pull_requests": "array",
+        "count": "number",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.get_pull_request",
+      "title": "Read one GitHub pull request and its head SHA",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "pull_number": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "pull_request": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.create_pull_request",
+      "title": "Create a GitHub pull request",
+      "provider": "github",
+      "risk": "medium",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "title": {
+          "type": "string",
+          "required": true
+        },
+        "head": {
+          "type": "string",
+          "required": true
+        },
+        "base": {
+          "type": "string",
+          "required": true
+        },
+        "body": {
+          "type": "string",
+          "required": false
+        },
+        "draft": {
+          "type": "boolean",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "pull_request": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.request_pull_request_reviewers",
+      "title": "Request users or teams to review a GitHub pull request",
+      "provider": "github",
+      "risk": "medium",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "pull_number": {
+          "type": "number",
+          "required": true
+        },
+        "reviewers": {
+          "type": "array",
+          "required": false
+        },
+        "team_reviewers": {
+          "type": "array",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "pull_number": "number",
+        "requested_reviewers": "array",
+        "requested_teams": "array",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.merge_pull_request",
+      "title": "Merge a GitHub pull request with optional expected head SHA",
+      "provider": "github",
+      "risk": "high",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "pull_number": {
+          "type": "number",
+          "required": true
+        },
+        "merge_method": {
+          "type": "string",
+          "required": false
+        },
+        "commit_title": {
+          "type": "string",
+          "required": false
+        },
+        "commit_message": {
+          "type": "string",
+          "required": false
+        },
+        "expected_head_sha": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "merged": "boolean",
+        "message": "string",
+        "sha": "string",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.dispatch_workflow",
+      "title": "Dispatch a GitHub Actions workflow",
+      "provider": "github",
+      "risk": "high",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "workflow_id": {
+          "type": "string",
+          "required": true
+        },
+        "ref": {
+          "type": "string",
+          "required": true
+        },
+        "inputs": {
+          "type": "object",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "workflow_id": "string",
+        "ref": "string",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.put_file",
+      "title": "Create or update a UTF-8 file in a GitHub repository",
+      "provider": "github",
+      "risk": "high",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "path": {
+          "type": "string",
+          "required": true
+        },
+        "message": {
+          "type": "string",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "required": true
+        },
+        "branch": {
+          "type": "string",
+          "required": false
+        },
+        "expected_sha": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "path": "string",
+        "content_sha": "string",
+        "content_url": "string",
+        "commit_sha": "string",
+        "commit_url": "string",
+        "http_status": "number"
+      }
+    }
+  ]
+}
