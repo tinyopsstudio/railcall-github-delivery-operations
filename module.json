@@ -1,9 +1,16 @@
 {
   "id": "tinyops-studio-llc/github-delivery-operations",
-  "name": "GitHub Delivery Operations - governed issues, pull requests, workflows, and files",
-  "version": "1.0.0",
-  "description": "Ten production-oriented GitHub delivery operations that complement RailCall's built-in issue commands. Read issues and pull requests, update work, create and review pull requests, merge with an expected SHA, dispatch Actions workflows, and create or update repository files. Credentials stay in RailCall's local vault, reads use bounded retries, and writes fail closed on ambiguous transport outcomes. Supports GitHub.com and HTTPS GitHub Enterprise API bases. contest:2026Q3",
+  "name": "GitHub Delivery Operations - governed issues, branches, pull requests, and CI/CD",
+  "version": "1.1.0",
+  "description": "GitHub delivery operations for governed issue-to-deploy work. Eighteen commands complement RailCall's built-in issue list/create commands, with compact receipts, bounded read retries, single-attempt writes, race-safe branch creation and pull-request merges, and GitHub.com plus GitHub Enterprise support.\n\nISSUES: github.get_issue {\"issue_number\":42}; github.update_issue {\"issue_number\":42,\"state\":\"closed\"}; github.add_issue_comment {\"issue_number\":42,\"body\":\"Deployed to staging.\"}.\n\nPULL REQUESTS: github.list_pull_requests {\"state\":\"open\",\"per_page\":10}; github.get_pull_request {\"pull_number\":17}; github.create_pull_request {\"title\":\"Ship v1.1\",\"head\":\"release/v1.1\",\"base\":\"main\",\"draft\":true}; github.request_pull_request_reviewers {\"pull_number\":17,\"reviewers\":[\"octocat\"]}; github.merge_pull_request {\"pull_number\":17,\"merge_method\":\"squash\",\"expected_head_sha\":\"0123456789abcdef0123456789abcdef01234567\"}.\n\nFILES AND BRANCHES: github.put_file {\"path\":\"docs/release.md\",\"message\":\"Add release notes\",\"content\":\"Ready\\n\",\"branch\":\"release/v1.1\"}; github.list_branches {\"protected\":true,\"per_page\":20}; github.create_branch {\"branch\":\"release/v1.1\",\"source_branch\":\"main\",\"expected_source_sha\":\"0123456789abcdef0123456789abcdef01234567\"}; github.delete_branch {\"branch\":\"release/v1.0\"}; github.get_branch_protection {\"branch\":\"main\"}.\n\nCI/CD: github.dispatch_workflow {\"workflow_id\":\"deploy.yml\",\"ref\":\"main\",\"inputs\":{\"environment\":\"staging\"}}; github.list_workflow_runs {\"branch\":\"main\",\"status\":\"failure\",\"per_page\":10}; github.get_workflow_run {\"run_id\":123456}; github.cancel_workflow_run {\"run_id\":123456}; github.list_check_runs {\"ref\":\"main\",\"filter\":\"latest\",\"per_page\":20}.\n\nSETUP: save one local RailCall vault entry named github: {\"token\":\"YOUR_TOKEN\",\"owner\":\"your-org\",\"repo\":\"your-repo\"}. For GitHub Enterprise Server, add \"api_url\":\"https://github.example.com/api/v3\" to that same entry. Use a fine-grained token or GitHub App token limited to the repository permissions needed: Metadata read, Issues read/write, Pull requests read/write, Contents read/write, and Actions read/write. Secrets never enter command inputs or receipts. Writes fail closed when transport confirmation is lost and are never retried automatically. contest:2026Q3",
   "provider": "github",
+  "homepage": "https://github.com/tinyopsstudio/railcall-github-delivery-operations",
+  "tests_url": "https://github.com/tinyopsstudio/railcall-github-delivery-operations/actions",
+  "auth": {
+    "vault_provider": "github",
+    "secret_field": "token",
+    "docs": "https://github.com/tinyopsstudio/railcall-github-delivery-operations#configure"
+  },
   "publisher_pubkey": "47e411915723b7727bad3568f592fac50d79a2f35c7ad65216fa4c93acf7f059",
   "license_required": false,
   "commands": [
@@ -355,6 +362,254 @@
         "content_url": "string",
         "commit_sha": "string",
         "commit_url": "string",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.list_branches",
+      "title": "List repository branches and protection status",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "protected": {
+          "type": "boolean",
+          "required": false
+        },
+        "per_page": {
+          "type": "number",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "branches": "array",
+        "count": "number",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.create_branch",
+      "title": "Create a branch from a verified source commit",
+      "provider": "github",
+      "risk": "medium",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "branch": {
+          "type": "string",
+          "required": true
+        },
+        "source_branch": {
+          "type": "string",
+          "required": true
+        },
+        "expected_source_sha": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "branch": "string",
+        "source_branch": "string",
+        "sha": "string",
+        "ref_url": "string",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.delete_branch",
+      "title": "Delete one repository branch",
+      "provider": "github",
+      "risk": "high",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "branch": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "branch": "string",
+        "deleted": "boolean",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.get_branch_protection",
+      "title": "Read compact branch protection settings",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "branch": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "branch": "string",
+        "protection": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.list_workflow_runs",
+      "title": "List GitHub Actions workflow runs with bounded filters",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "branch": {
+          "type": "string",
+          "required": false
+        },
+        "event": {
+          "type": "string",
+          "required": false
+        },
+        "status": {
+          "type": "string",
+          "required": false
+        },
+        "actor": {
+          "type": "string",
+          "required": false
+        },
+        "per_page": {
+          "type": "number",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "workflow_runs": "array",
+        "count": "number",
+        "total_count": "number",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.get_workflow_run",
+      "title": "Read one GitHub Actions workflow run",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "run_id": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "workflow_run": "object",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.cancel_workflow_run",
+      "title": "Request cancellation of a GitHub Actions workflow run",
+      "provider": "github",
+      "risk": "high",
+      "mode": "write_requires_approval",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "run_id": {
+          "type": "number",
+          "required": true
+        }
+      },
+      "output_schema": {
+        "run_id": "number",
+        "cancel_requested": "boolean",
+        "http_status": "number"
+      }
+    },
+    {
+      "id": "github.list_check_runs",
+      "title": "List checks for a commit, branch, or tag",
+      "provider": "github",
+      "risk": "low",
+      "mode": "read",
+      "requires": [
+        "GITHUB_TOKEN",
+        "GITHUB_OWNER",
+        "GITHUB_REPO"
+      ],
+      "preview": true,
+      "receipt_required": true,
+      "input_schema": {
+        "ref": {
+          "type": "string",
+          "required": true
+        },
+        "check_name": {
+          "type": "string",
+          "required": false
+        },
+        "status": {
+          "type": "string",
+          "required": false
+        },
+        "filter": {
+          "type": "string",
+          "required": false
+        },
+        "per_page": {
+          "type": "number",
+          "required": false
+        }
+      },
+      "output_schema": {
+        "ref": "string",
+        "check_runs": "array",
+        "count": "number",
+        "total_count": "number",
         "http_status": "number"
       }
     }

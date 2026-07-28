@@ -1,8 +1,8 @@
 """Governed GitHub delivery operations for RailCall.
 
 The module complements RailCall's built-in issue listing and creation commands
-with the actions needed to move work from an issue through a pull request and
-deployment trigger.
+with the actions needed to move work from an issue through branches, pull
+requests, checks, and deployment workflows.
 
 Credentials are read only from RailCall's local ``github`` vault entry. Reads
 use bounded retries. Writes are never retried automatically because a lost
@@ -30,6 +30,7 @@ _REPO_PART_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 _TOKEN_RE = re.compile(r"^\S{16,512}$")
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{40,64}$")
 _WORKFLOW_RE = re.compile(r"^[A-Za-z0-9._-]{1,255}$")
+_REF_RE = re.compile(r"^[A-Za-z0-9._/@+-]{1,255}$")
 _TRANSIENT_READ_CODES = {429, 502, 503, 504}
 
 
@@ -123,6 +124,33 @@ def _content_path(value):
     return path
 
 
+def _ref_name(value, field="branch"):
+    ref = _text(value, field, maximum=255)
+    invalid = (
+        not _REF_RE.fullmatch(ref)
+        or ref.startswith(("/", "."))
+        or ref.endswith(("/", ".", ".lock"))
+        or "//" in ref
+        or ".." in ref
+        or "@{" in ref
+        or any(part in ("", ".", "..") or part.startswith(".") for part in ref.split("/"))
+    )
+    if invalid:
+        raise RuntimeError(f"{field} is not a supported Git ref name")
+    return ref
+
+
+def _ref_selector(value, field="ref"):
+    ref = _text(value, field, maximum=255)
+    if any(ord(character) < 32 or character == "\x7f" for character in ref):
+        raise RuntimeError(f"{field} cannot contain control characters")
+    if "/" in ref:
+        return _ref_name(ref, field)
+    if _SHA_RE.fullmatch(ref):
+        return ref
+    return _ref_name(ref, field)
+
+
 def _repo_part(value, field):
     clean = _text(value, field, maximum=100)
     if not _REPO_PART_RE.fullmatch(clean):
@@ -167,7 +195,7 @@ def _headers(token):
         "Accept": "application/vnd.github+json",
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json",
-        "User-Agent": "RailCall-GitHub-Delivery-Operations/1.0",
+        "User-Agent": "RailCall-GitHub-Delivery-Operations/1.1",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
@@ -329,6 +357,53 @@ def _compact_pull_request(pull):
         "base_ref": base.get("ref"),
         "created_at": pull.get("created_at"),
         "updated_at": pull.get("updated_at"),
+    }
+
+
+def _compact_branch(branch):
+    commit = branch.get("commit") if isinstance(branch.get("commit"), dict) else {}
+    return {
+        "name": branch.get("name"),
+        "sha": commit.get("sha"),
+        "protected": bool(branch.get("protected")),
+        "protection_url": branch.get("protection_url"),
+    }
+
+
+def _compact_workflow_run(run):
+    head_commit = (
+        run.get("head_commit") if isinstance(run.get("head_commit"), dict) else {}
+    )
+    return {
+        "id": run.get("id"),
+        "name": run.get("name"),
+        "workflow_id": run.get("workflow_id"),
+        "run_number": run.get("run_number"),
+        "event": run.get("event"),
+        "status": run.get("status"),
+        "conclusion": run.get("conclusion"),
+        "head_branch": run.get("head_branch"),
+        "head_sha": run.get("head_sha"),
+        "head_commit_message": head_commit.get("message"),
+        "html_url": run.get("html_url"),
+        "created_at": run.get("created_at"),
+        "updated_at": run.get("updated_at"),
+    }
+
+
+def _compact_check_run(check):
+    app = check.get("app") if isinstance(check.get("app"), dict) else {}
+    return {
+        "id": check.get("id"),
+        "name": check.get("name"),
+        "status": check.get("status"),
+        "conclusion": check.get("conclusion"),
+        "head_sha": check.get("head_sha"),
+        "details_url": check.get("details_url"),
+        "html_url": check.get("html_url"),
+        "app": app.get("slug") or app.get("name"),
+        "started_at": check.get("started_at"),
+        "completed_at": check.get("completed_at"),
     }
 
 
@@ -651,4 +726,290 @@ def github_put_file(inputs, stamp):
         "content_url": content_result.get("html_url"),
         "commit_sha": commit.get("sha"),
         "commit_url": commit.get("html_url"),
+    }, None
+
+
+def github_list_branches(inputs, stamp):
+    per_page = _positive_int(inputs.get("per_page") or 30, "per_page", maximum=100)
+    protected = inputs.get("protected")
+    if protected is not None:
+        protected = "true" if _boolean(protected, "protected") else "false"
+    status, payload = _request(
+        "GET",
+        "/branches",
+        query={"protected": protected, "per_page": per_page},
+        expected=(200,),
+    )
+    if not isinstance(payload, list):
+        raise RuntimeError("GitHub returned an unexpected branch list")
+    branches = [_compact_branch(item) for item in payload[:per_page] if isinstance(item, dict)]
+    return {
+        "ok": True,
+        "http_status": status,
+        "count": len(branches),
+        "branches": branches,
+    }, None
+
+
+def github_create_branch(inputs, stamp):
+    branch = _ref_name(inputs.get("branch"))
+    source_branch = _ref_name(inputs.get("source_branch"), "source_branch")
+    expected_source_sha = _text(
+        inputs.get("expected_source_sha"),
+        "expected_source_sha",
+        required=False,
+        maximum=64,
+    )
+    if expected_source_sha and not _SHA_RE.fullmatch(expected_source_sha):
+        raise RuntimeError(
+            "expected_source_sha must be a 40-64 character hexadecimal commit SHA"
+        )
+    encoded_source = urllib.parse.quote(source_branch, safe="")
+    _status, source_payload = _request(
+        "GET",
+        f"/git/ref/heads/{encoded_source}",
+        expected=(200,),
+    )
+    source_ref = _require_object(source_payload, "source branch")
+    source_object = (
+        source_ref.get("object") if isinstance(source_ref.get("object"), dict) else {}
+    )
+    source_sha = source_object.get("sha")
+    if not isinstance(source_sha, str) or not _SHA_RE.fullmatch(source_sha):
+        raise RuntimeError("GitHub returned no valid source branch commit SHA")
+    if expected_source_sha and source_sha.lower() != expected_source_sha.lower():
+        raise RuntimeError(
+            "source branch moved; expected_source_sha does not match the current commit"
+        )
+    status, payload = _request(
+        "POST",
+        "/git/refs",
+        payload={"ref": f"refs/heads/{branch}", "sha": source_sha},
+        write=True,
+        expected=(201,),
+    )
+    created_ref = _require_object(payload, "created branch")
+    created_object = (
+        created_ref.get("object")
+        if isinstance(created_ref.get("object"), dict)
+        else {}
+    )
+    if not created_object.get("sha"):
+        raise RuntimeError("GitHub accepted the branch but returned no commit SHA")
+    return {
+        "ok": True,
+        "http_status": status,
+        "branch": branch,
+        "source_branch": source_branch,
+        "sha": created_object.get("sha"),
+        "ref_url": created_ref.get("url"),
+    }, None
+
+
+def github_delete_branch(inputs, stamp):
+    branch = _ref_name(inputs.get("branch"))
+    encoded_branch = urllib.parse.quote(branch, safe="")
+    status, _payload = _request(
+        "DELETE",
+        f"/git/refs/heads/{encoded_branch}",
+        write=True,
+        expected=(204,),
+    )
+    return {
+        "ok": True,
+        "http_status": status,
+        "branch": branch,
+        "deleted": True,
+    }, None
+
+
+def github_get_branch_protection(inputs, stamp):
+    branch = _ref_name(inputs.get("branch"))
+    encoded_branch = urllib.parse.quote(branch, safe="")
+    status, payload = _request(
+        "GET",
+        f"/branches/{encoded_branch}/protection",
+        expected=(200,),
+    )
+    protection = _require_object(payload, "branch protection")
+    status_checks = (
+        protection.get("required_status_checks")
+        if isinstance(protection.get("required_status_checks"), dict)
+        else {}
+    )
+    pull_reviews = (
+        protection.get("required_pull_request_reviews")
+        if isinstance(protection.get("required_pull_request_reviews"), dict)
+        else {}
+    )
+    restrictions = (
+        protection.get("restrictions")
+        if isinstance(protection.get("restrictions"), dict)
+        else {}
+    )
+    contexts = status_checks.get("contexts")
+    return {
+        "ok": True,
+        "http_status": status,
+        "branch": branch,
+        "protection": {
+            "required_status_checks": {
+                "strict": bool(status_checks.get("strict")),
+                "contexts": contexts[:50] if isinstance(contexts, list) else [],
+            },
+            "enforce_admins": bool(
+                (protection.get("enforce_admins") or {}).get("enabled")
+                if isinstance(protection.get("enforce_admins"), dict)
+                else False
+            ),
+            "required_approving_review_count": pull_reviews.get(
+                "required_approving_review_count"
+            ),
+            "dismiss_stale_reviews": bool(
+                pull_reviews.get("dismiss_stale_reviews")
+            ),
+            "require_code_owner_reviews": bool(
+                pull_reviews.get("require_code_owner_reviews")
+            ),
+            "allow_force_pushes": bool(
+                (protection.get("allow_force_pushes") or {}).get("enabled")
+                if isinstance(protection.get("allow_force_pushes"), dict)
+                else False
+            ),
+            "allow_deletions": bool(
+                (protection.get("allow_deletions") or {}).get("enabled")
+                if isinstance(protection.get("allow_deletions"), dict)
+                else False
+            ),
+            "restricted_users": len(restrictions.get("users") or []),
+            "restricted_teams": len(restrictions.get("teams") or []),
+            "restricted_apps": len(restrictions.get("apps") or []),
+        },
+    }, None
+
+
+def github_list_workflow_runs(inputs, stamp):
+    per_page = _positive_int(inputs.get("per_page") or 30, "per_page", maximum=100)
+    branch = _text(inputs.get("branch"), "branch", required=False, maximum=255)
+    event = _text(inputs.get("event"), "event", required=False, maximum=100)
+    run_status = _text(inputs.get("status"), "status", required=False, maximum=100)
+    actor = _text(inputs.get("actor"), "actor", required=False, maximum=100)
+    status, payload = _request(
+        "GET",
+        "/actions/runs",
+        query={
+            "branch": branch,
+            "event": event,
+            "status": run_status,
+            "actor": actor,
+            "per_page": per_page,
+        },
+        expected=(200,),
+    )
+    result = _require_object(payload, "workflow run list")
+    raw_runs = result.get("workflow_runs")
+    if not isinstance(raw_runs, list):
+        raise RuntimeError("GitHub returned an unexpected workflow run list")
+    runs = [
+        _compact_workflow_run(item)
+        for item in raw_runs[:per_page]
+        if isinstance(item, dict)
+    ]
+    return {
+        "ok": True,
+        "http_status": status,
+        "total_count": result.get("total_count"),
+        "count": len(runs),
+        "workflow_runs": runs,
+    }, None
+
+
+def github_get_workflow_run(inputs, stamp):
+    run_id = _positive_int(
+        inputs.get("run_id"),
+        "run_id",
+        maximum=9_223_372_036_854_775_807,
+    )
+    status, payload = _request(
+        "GET",
+        f"/actions/runs/{run_id}",
+        expected=(200,),
+    )
+    run = _require_object(payload, "workflow run")
+    return {
+        "ok": True,
+        "http_status": status,
+        "workflow_run": _compact_workflow_run(run),
+    }, None
+
+
+def github_cancel_workflow_run(inputs, stamp):
+    run_id = _positive_int(
+        inputs.get("run_id"),
+        "run_id",
+        maximum=9_223_372_036_854_775_807,
+    )
+    status, _payload = _request(
+        "POST",
+        f"/actions/runs/{run_id}/cancel",
+        write=True,
+        expected=(202,),
+    )
+    return {
+        "ok": True,
+        "http_status": status,
+        "run_id": run_id,
+        "cancel_requested": True,
+    }, None
+
+
+def github_list_check_runs(inputs, stamp):
+    ref = _ref_selector(inputs.get("ref"))
+    per_page = _positive_int(inputs.get("per_page") or 30, "per_page", maximum=100)
+    check_name = _text(
+        inputs.get("check_name"),
+        "check_name",
+        required=False,
+        maximum=100,
+    )
+    check_status = _text(
+        inputs.get("status"),
+        "status",
+        required=False,
+        maximum=100,
+    )
+    check_filter = _enum(
+        inputs.get("filter"),
+        "filter",
+        {"latest", "all"},
+        default="latest",
+    )
+    encoded_ref = urllib.parse.quote(ref, safe="")
+    status, payload = _request(
+        "GET",
+        f"/commits/{encoded_ref}/check-runs",
+        query={
+            "check_name": check_name,
+            "status": check_status,
+            "filter": check_filter,
+            "per_page": per_page,
+        },
+        expected=(200,),
+    )
+    result = _require_object(payload, "check run list")
+    raw_checks = result.get("check_runs")
+    if not isinstance(raw_checks, list):
+        raise RuntimeError("GitHub returned an unexpected check run list")
+    checks = [
+        _compact_check_run(item)
+        for item in raw_checks[:per_page]
+        if isinstance(item, dict)
+    ]
+    return {
+        "ok": True,
+        "http_status": status,
+        "ref": ref,
+        "total_count": result.get("total_count"),
+        "count": len(checks),
+        "check_runs": checks,
     }, None

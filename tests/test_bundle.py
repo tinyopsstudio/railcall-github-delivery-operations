@@ -40,7 +40,7 @@ class RailCallBundleTests(unittest.TestCase):
         manifest = json.loads((MODULE_DIR / "module.json").read_text(encoding="utf-8"))
         self.assertIn("contest:2026Q3", manifest["description"])
         self.assertFalse(manifest["license_required"])
-        self.assertEqual("1.0.0", manifest["version"])
+        self.assertEqual("1.1.0", manifest["version"])
 
 
 if __name__ == "__main__":

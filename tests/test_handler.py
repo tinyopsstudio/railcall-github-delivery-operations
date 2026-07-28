@@ -89,11 +89,19 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
         request = self.calls[index][0]
         return json.loads((request.data or b"{}").decode("utf-8"))
 
-    def test_manifest_exposes_ten_matching_commands(self):
+    def test_manifest_exposes_eighteen_matching_commands_and_store_metadata(self):
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         commands = manifest["commands"]
-        self.assertEqual(10, len(commands))
-        self.assertEqual(10, len({item["id"] for item in commands}))
+        self.assertEqual("1.1.0", manifest["version"])
+        self.assertEqual(18, len(commands))
+        self.assertEqual(18, len({item["id"] for item in commands}))
+        self.assertEqual("github", manifest["auth"]["vault_provider"])
+        self.assertEqual("token", manifest["auth"]["secret_field"])
+        self.assertTrue(manifest["auth"]["docs"].startswith("https://"))
+        self.assertTrue(manifest["homepage"].startswith("https://"))
+        self.assertTrue(manifest["tests_url"].startswith("https://"))
+        self.assertGreaterEqual(len(manifest["description"]), 1_500)
+        self.assertLessEqual(len(manifest["description"]), 2_500)
         for command in commands:
             function_name = command["id"].replace(".", "_").replace("-", "_")
             self.assertTrue(callable(getattr(handler, function_name, None)))
@@ -328,6 +336,221 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
                 },
                 {},
             )
+
+    def test_list_branches_filters_and_compacts_results(self):
+        self.route(
+            FakeResponse(
+                200,
+                [
+                    {
+                        "name": "main",
+                        "commit": {"sha": "1" * 40},
+                        "protected": True,
+                        "protection_url": "https://api.github.com/protection",
+                    }
+                ],
+            )
+        )
+
+        result, _artifact = handler.github_list_branches(
+            {"protected": True, "per_page": 20},
+            {},
+        )
+
+        request = self.calls[0][0]
+        self.assertEqual("GET", request.method)
+        self.assertIn("protected=true", request.full_url)
+        self.assertIn("per_page=20", request.full_url)
+        self.assertEqual(1, result["count"])
+        self.assertEqual("1" * 40, result["branches"][0]["sha"])
+
+    def test_create_branch_verifies_source_sha_before_single_write(self):
+        source_sha = "2" * 40
+        self.route(
+            FakeResponse(
+                200,
+                {
+                    "ref": "refs/heads/main",
+                    "object": {"type": "commit", "sha": source_sha},
+                },
+            ),
+            FakeResponse(
+                201,
+                {
+                    "ref": "refs/heads/release/v1.1",
+                    "url": "https://api.github.com/ref",
+                    "object": {"type": "commit", "sha": source_sha},
+                },
+            ),
+        )
+
+        result, _artifact = handler.github_create_branch(
+            {
+                "branch": "release/v1.1",
+                "source_branch": "main",
+                "expected_source_sha": source_sha,
+            },
+            {},
+        )
+
+        self.assertEqual(2, len(self.calls))
+        self.assertEqual("GET", self.calls[0][0].method)
+        self.assertTrue(self.calls[0][0].full_url.endswith("/git/ref/heads/main"))
+        self.assertEqual("POST", self.calls[1][0].method)
+        self.assertEqual(
+            {"ref": "refs/heads/release/v1.1", "sha": source_sha},
+            self.request_json(1),
+        )
+        self.assertEqual(source_sha, result["sha"])
+
+    def test_create_branch_stops_if_source_moved(self):
+        self.route(
+            FakeResponse(
+                200,
+                {
+                    "ref": "refs/heads/main",
+                    "object": {"type": "commit", "sha": "3" * 40},
+                },
+            )
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "source branch moved"):
+            handler.github_create_branch(
+                {
+                    "branch": "release/v1.1",
+                    "source_branch": "main",
+                    "expected_source_sha": "4" * 40,
+                },
+                {},
+            )
+
+        self.assertEqual(1, len(self.calls))
+
+    def test_delete_branch_encodes_slash_and_does_not_retry(self):
+        self.route(FakeResponse(204))
+
+        result, _artifact = handler.github_delete_branch(
+            {"branch": "release/v1.0"},
+            {},
+        )
+
+        request = self.calls[0][0]
+        self.assertEqual("DELETE", request.method)
+        self.assertTrue(request.full_url.endswith("/git/refs/heads/release%2Fv1.0"))
+        self.assertTrue(result["deleted"])
+        self.assertEqual(1, len(self.calls))
+
+    def test_get_branch_protection_compacts_sensitive_lists_to_counts(self):
+        self.route(
+            FakeResponse(
+                200,
+                {
+                    "required_status_checks": {
+                        "strict": True,
+                        "contexts": ["tests", "lint"],
+                    },
+                    "enforce_admins": {"enabled": True},
+                    "required_pull_request_reviews": {
+                        "required_approving_review_count": 2,
+                        "dismiss_stale_reviews": True,
+                        "require_code_owner_reviews": True,
+                    },
+                    "allow_force_pushes": {"enabled": False},
+                    "allow_deletions": {"enabled": False},
+                    "restrictions": {
+                        "users": [{"login": "maintainer"}],
+                        "teams": [{"slug": "release"}],
+                        "apps": [],
+                    },
+                },
+            )
+        )
+
+        result, _artifact = handler.github_get_branch_protection(
+            {"branch": "main"},
+            {},
+        )
+
+        protection = result["protection"]
+        self.assertEqual(["tests", "lint"], protection["required_status_checks"]["contexts"])
+        self.assertEqual(2, protection["required_approving_review_count"])
+        self.assertEqual(1, protection["restricted_users"])
+        self.assertEqual(1, protection["restricted_teams"])
+
+    def test_list_and_get_workflow_runs_compact_results(self):
+        run_id = 12_345_678_901
+        workflow_run = {
+            "id": run_id,
+            "name": "CI",
+            "workflow_id": 9,
+            "run_number": 44,
+            "event": "push",
+            "status": "completed",
+            "conclusion": "failure",
+            "head_branch": "main",
+            "head_sha": "5" * 40,
+            "head_commit": {"message": "Test v1.1"},
+            "html_url": f"https://github.com/example/actions/runs/{run_id}",
+        }
+        self.route(
+            FakeResponse(200, {"total_count": 1, "workflow_runs": [workflow_run]}),
+            FakeResponse(200, workflow_run),
+        )
+
+        listed, _artifact = handler.github_list_workflow_runs(
+            {"branch": "main", "status": "failure", "per_page": 10},
+            {},
+        )
+        fetched, _artifact = handler.github_get_workflow_run({"run_id": run_id}, {})
+
+        self.assertEqual(1, listed["count"])
+        self.assertEqual("failure", listed["workflow_runs"][0]["conclusion"])
+        self.assertIn("branch=main", self.calls[0][0].full_url)
+        self.assertEqual(run_id, fetched["workflow_run"]["id"])
+        self.assertTrue(self.calls[1][0].full_url.endswith(f"/actions/runs/{run_id}"))
+
+    def test_cancel_workflow_run_is_a_single_attempt_write(self):
+        self.route(FakeResponse(202))
+        run_id = 12_345_678_901
+
+        result, _artifact = handler.github_cancel_workflow_run({"run_id": run_id}, {})
+
+        request = self.calls[0][0]
+        self.assertEqual("POST", request.method)
+        self.assertTrue(request.full_url.endswith(f"/actions/runs/{run_id}/cancel"))
+        self.assertTrue(result["cancel_requested"])
+        self.assertEqual(1, len(self.calls))
+
+    def test_list_check_runs_accepts_branch_ref_and_compacts_results(self):
+        self.route(
+            FakeResponse(
+                200,
+                {
+                    "total_count": 1,
+                    "check_runs": [
+                        {
+                            "id": 91,
+                            "name": "tests",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "6" * 40,
+                            "html_url": "https://github.com/example/checks/91",
+                            "app": {"slug": "github-actions"},
+                        }
+                    ],
+                },
+            )
+        )
+
+        result, _artifact = handler.github_list_check_runs(
+            {"ref": "release/v1.1", "filter": "latest", "per_page": 20},
+            {},
+        )
+
+        request = self.calls[0][0]
+        self.assertIn("/commits/release%2Fv1.1/check-runs", request.full_url)
+        self.assertEqual(1, result["count"])
+        self.assertEqual("github-actions", result["check_runs"][0]["app"])
 
     def test_enterprise_api_base_is_vault_only(self):
         VAULT["github"]["api_url"] = "https://github.example.test/api/v3"

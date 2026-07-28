@@ -4,8 +4,9 @@
 [![RailCall Marketplace](https://img.shields.io/badge/RailCall-Marketplace-0f766e)](https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations)
 
 This module fills the gap between opening a GitHub issue and shipping the
-change. It adds ten governed operations for issue updates, pull requests,
-review requests, merges, Actions dispatches, and repository file writes.
+change. It adds eighteen governed operations for issue updates, branches,
+pull requests, merges, Actions dispatches and run observability, checks, and
+repository file writes.
 
 The module is free. It supports GitHub.com and HTTPS GitHub Enterprise API
 bases.
@@ -16,8 +17,9 @@ Install it from the
 ## Self-serve operations pack
 
 TinyOps offers a $49 operations pack for teams that can install the module but
-want a concrete permission matrix, approval worksheet, ten-command smoke-test
-plan, operator runbook, rollback procedure, and editable evidence records.
+want a concrete permission matrix, approval worksheet, eighteen-command
+smoke-test plan, operator runbook, rollback procedure, and editable evidence
+records.
 
 The download contains 13 files and is designed for one GitHub.com or HTTPS
 GitHub Enterprise repository. The signed runtime module remains free.
@@ -49,6 +51,14 @@ scope and send non-secret workflow details on the
 | `github.merge_pull_request` | Merge, squash, or rebase a pull request |
 | `github.dispatch_workflow` | Trigger a `workflow_dispatch` workflow |
 | `github.put_file` | Create or update one UTF-8 repository file |
+| `github.list_branches` | List branches and compact protection status |
+| `github.create_branch` | Create a branch after verifying its source SHA |
+| `github.delete_branch` | Delete one branch through the approval airlock |
+| `github.get_branch_protection` | Read compact branch protection settings |
+| `github.list_workflow_runs` | List Actions runs with bounded filters |
+| `github.get_workflow_run` | Read one Actions run |
+| `github.cancel_workflow_run` | Request cancellation of one Actions run |
+| `github.list_check_runs` | List checks for a commit, branch, or tag |
 
 RailCall already includes `github.list_issues` and `github.create_issue`.
 Together, the built-ins and this module cover a practical issue-to-delivery
@@ -62,10 +72,9 @@ railcall market install tinyops-studio-llc/github-delivery-operations
 
 Restart Studio or reload modules after installation.
 
-The published `module.json`, `module.sig`, and `handlers/handler.py` in this
-repository are the exact signed runtime bundle for marketplace version
-`1.0.0`. The surrounding tests and documentation are published for independent
-review.
+The published `module.json`, `module.sig`, and `handlers/handler.py` are the
+exact signed runtime bundle for marketplace version `1.1.0`. The tests and
+documentation are published for independent review.
 
 ## Configure
 
@@ -113,11 +122,39 @@ repository permissions required by the commands you plan to run:
 - Metadata: read
 - Issues: read and write
 - Pull requests: read and write
-- Actions: write
+- Actions: read and write
 - Contents: read and write
+- Checks: read
 
 GitHub administrators can narrow those permissions further when only a subset
 of commands is needed.
+
+## Command examples
+
+Each entry below is one RailCall command and its `inputs` object:
+
+```json
+[
+  {"command":"github.get_issue","inputs":{"issue_number":42}},
+  {"command":"github.update_issue","inputs":{"issue_number":42,"state":"closed"}},
+  {"command":"github.add_issue_comment","inputs":{"issue_number":42,"body":"Deployed to staging."}},
+  {"command":"github.list_pull_requests","inputs":{"state":"open","per_page":10}},
+  {"command":"github.get_pull_request","inputs":{"pull_number":17}},
+  {"command":"github.create_pull_request","inputs":{"title":"Ship v1.1","head":"release/v1.1","base":"main","draft":true}},
+  {"command":"github.request_pull_request_reviewers","inputs":{"pull_number":17,"reviewers":["octocat"]}},
+  {"command":"github.merge_pull_request","inputs":{"pull_number":17,"merge_method":"squash","expected_head_sha":"0123456789abcdef0123456789abcdef01234567"}},
+  {"command":"github.dispatch_workflow","inputs":{"workflow_id":"deploy.yml","ref":"main","inputs":{"environment":"staging"}}},
+  {"command":"github.put_file","inputs":{"path":"docs/release.md","message":"Add release notes","content":"Ready\n","branch":"release/v1.1"}},
+  {"command":"github.list_branches","inputs":{"protected":true,"per_page":20}},
+  {"command":"github.create_branch","inputs":{"branch":"release/v1.1","source_branch":"main","expected_source_sha":"0123456789abcdef0123456789abcdef01234567"}},
+  {"command":"github.delete_branch","inputs":{"branch":"release/v1.0"}},
+  {"command":"github.get_branch_protection","inputs":{"branch":"main"}},
+  {"command":"github.list_workflow_runs","inputs":{"branch":"main","status":"failure","per_page":10}},
+  {"command":"github.get_workflow_run","inputs":{"run_id":123456}},
+  {"command":"github.cancel_workflow_run","inputs":{"run_id":123456}},
+  {"command":"github.list_check_runs","inputs":{"ref":"main","filter":"latest","per_page":20}}
+]
+```
 
 ## Ten-minute check
 
@@ -155,17 +192,15 @@ read and the approved write.
 
 ## Verification
 
-The release was validated through three layers:
+The v1.1 release was validated through three layers:
 
-- 17 unit and bundle tests, including exact Ed25519 signature verification
-- A clean marketplace install accepted all ten commands without rejection
-- A live disposable-repository cycle exercised issue reads and writes, file
-  writes, pull-request creation and merge, and a successful GitHub Actions
-  dispatch
+- 25 unit and bundle tests, including exact Ed25519 signature verification
+- A live disposable-repository cycle created and deleted a branch, fetched a
+  real 64-bit Actions run, and read its latest check run
+- The CI workflow reruns the public test suite on Python 3.11, 3.12, and 3.13
 
-The CI workflow reruns the public test suite on Python 3.11, 3.12, and 3.13.
-Live tests are intentionally excluded because they require a private GitHub
-token and a disposable repository.
+Live tests are intentionally excluded from public CI because they require a
+private GitHub token and a disposable repository.
 
 ## Local development
 
@@ -182,7 +217,7 @@ python3 tools/sign_module.py .
 ```
 
 Install the local bundle into an isolated RailCall workspace and verify that
-all ten commands load before publishing.
+all eighteen commands load before publishing.
 
 ## Scope
 
