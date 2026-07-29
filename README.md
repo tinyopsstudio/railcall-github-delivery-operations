@@ -14,6 +14,11 @@ bases.
 Install it from the
 [RailCall Marketplace](https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations).
 
+Watch the
+[race-safe branch creation walkthrough](https://youtu.be/8BdXElhlT5s)
+for the stale-source failure path, single-write approval boundary, focused
+regression tests, and live GitHub smoke evidence.
+
 ## Self-serve operations pack
 
 TinyOps offers a $49 operations pack for teams that can install the module but
