@@ -1,6 +1,6 @@
 # GitHub Delivery Operations for RailCall
 
-**Contest category:** New integration  
+**Contest category:** New integration
 **Marketplace:** [GitHub Delivery Operations](https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations)
 
 ## Who it helps
