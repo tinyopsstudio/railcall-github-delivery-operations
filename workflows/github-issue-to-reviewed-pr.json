@@ -1,0 +1,276 @@
+{
+  "id": "tinyops-studio-llc/github-issue-to-reviewed-pr",
+  "title": "GitHub Issue to Reviewed Pull Request",
+  "description": "Turn an approved GitHub issue into a review-ready pull request with source-drift protection, approval-gated writes, reviewer routing, and check-run verification. The workflow stops before merge.",
+  "kind": "canvas",
+  "category": "Eng",
+  "version": "v1.0.1",
+  "approval": "require_human",
+  "module_dependency": {
+    "id": "tinyops-studio-llc/github-delivery-operations",
+    "minimum_version": "1.1.0"
+  },
+  "irreversible_effects": [
+    "github.create_branch",
+    "github.put_file",
+    "github.create_pull_request",
+    "github.request_pull_request_reviewers"
+  ],
+  "context_schema": {
+    "issue_number": {
+      "type": "number",
+      "required": true
+    },
+    "source_branch": {
+      "type": "string",
+      "required": true
+    },
+    "expected_source_sha": {
+      "type": "string",
+      "required": true
+    },
+    "work_branch": {
+      "type": "string",
+      "required": true
+    },
+    "file_path": {
+      "type": "string",
+      "required": true
+    },
+    "file_content": {
+      "type": "string",
+      "required": true
+    },
+    "commit_message": {
+      "type": "string",
+      "required": true
+    },
+    "pull_request_title": {
+      "type": "string",
+      "required": true
+    },
+    "pull_request_body": {
+      "type": "string",
+      "required": true
+    },
+    "base_branch": {
+      "type": "string",
+      "required": true
+    },
+    "reviewers": {
+      "type": "array",
+      "required": false
+    },
+    "team_reviewers": {
+      "type": "array",
+      "required": false
+    },
+    "reviewers_present": {
+      "type": "boolean",
+      "required": true
+    }
+  },
+  "nodes": [
+    {
+      "id": "inspect_issue",
+      "label": "Confirm the source issue",
+      "type": "read",
+      "role": "inspect",
+      "branch": "intake",
+      "provider": "github",
+      "command_id": "github.get_issue",
+      "args": {
+        "issue_number": "{{ctx.issue_number}}"
+      }
+    },
+    {
+      "id": "create_work_branch",
+      "label": "Create a drift-protected work branch",
+      "type": "effect",
+      "role": "change",
+      "branch": "delivery",
+      "parent": "inspect_issue",
+      "approval": "require_human",
+      "provider": "github",
+      "command_id": "github.create_branch",
+      "args": {
+        "branch": "{{ctx.work_branch}}",
+        "source_branch": "{{ctx.source_branch}}",
+        "expected_source_sha": "{{ctx.expected_source_sha}}"
+      }
+    },
+    {
+      "id": "write_change",
+      "label": "Write the approved file change",
+      "type": "effect",
+      "role": "change",
+      "branch": "delivery",
+      "parent": "create_work_branch",
+      "approval": "require_human",
+      "provider": "github",
+      "command_id": "github.put_file",
+      "args": {
+        "path": "{{ctx.file_path}}",
+        "content": "{{ctx.file_content}}",
+        "message": "{{ctx.commit_message}}",
+        "branch": "{{ctx.work_branch}}"
+      }
+    },
+    {
+      "id": "open_pull_request",
+      "label": "Open a review-ready pull request",
+      "type": "effect",
+      "role": "review",
+      "branch": "review",
+      "parent": "write_change",
+      "approval": "require_human",
+      "provider": "github",
+      "command_id": "github.create_pull_request",
+      "args": {
+        "title": "{{ctx.pull_request_title}}",
+        "body": "{{ctx.pull_request_body}}",
+        "head": "{{ctx.work_branch}}",
+        "base": "{{ctx.base_branch}}",
+        "draft": false
+      }
+    },
+    {
+      "id": "request_reviewers",
+      "label": "Route the pull request to reviewers",
+      "type": "effect",
+      "role": "review",
+      "branch": "review",
+      "parent": "open_pull_request",
+      "approval": "require_human",
+      "provider": "github",
+      "command_id": "github.request_pull_request_reviewers",
+      "cond": {
+        "ctx": "reviewers_present",
+        "eq": true
+      },
+      "args": {
+        "pull_number": "{{nodes.open_pull_request.pull_request.number}}",
+        "reviewers": "{{ctx.reviewers}}",
+        "team_reviewers": "{{ctx.team_reviewers}}"
+      }
+    },
+    {
+      "id": "verify_checks",
+      "label": "Verify checks on the delivered commit",
+      "type": "read",
+      "role": "verify",
+      "branch": "verification",
+      "parent": "open_pull_request",
+      "provider": "github",
+      "command_id": "github.list_check_runs",
+      "args": {
+        "ref": "{{nodes.write_change.commit_sha}}",
+        "filter": "latest",
+        "per_page": 30
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "inspect_issue"
+    },
+    {
+      "from": "inspect_issue",
+      "to": "create_work_branch"
+    },
+    {
+      "from": "create_work_branch",
+      "to": "write_change"
+    },
+    {
+      "from": "write_change",
+      "to": "open_pull_request"
+    },
+    {
+      "from": "open_pull_request",
+      "to": "request_reviewers"
+    },
+    {
+      "from": "open_pull_request",
+      "to": "verify_checks"
+    }
+  ],
+  "steps": [
+    {
+      "id": "inspect_issue",
+      "label": "Confirm the source issue",
+      "command_id": "github.get_issue",
+      "inputs_template": {
+        "issue_number": "{{ctx.issue_number}}"
+      }
+    },
+    {
+      "id": "create_work_branch",
+      "label": "Create a drift-protected work branch",
+      "command_id": "github.create_branch",
+      "inputs_template": {
+        "branch": "{{ctx.work_branch}}",
+        "source_branch": "{{ctx.source_branch}}",
+        "expected_source_sha": "{{ctx.expected_source_sha}}"
+      }
+    },
+    {
+      "id": "write_change",
+      "label": "Write the approved file change",
+      "command_id": "github.put_file",
+      "inputs_template": {
+        "path": "{{ctx.file_path}}",
+        "content": "{{ctx.file_content}}",
+        "message": "{{ctx.commit_message}}",
+        "branch": "{{ctx.work_branch}}"
+      }
+    },
+    {
+      "id": "open_pull_request",
+      "label": "Open a review-ready pull request",
+      "command_id": "github.create_pull_request",
+      "inputs_template": {
+        "title": "{{ctx.pull_request_title}}",
+        "body": "{{ctx.pull_request_body}}",
+        "head": "{{ctx.work_branch}}",
+        "base": "{{ctx.base_branch}}",
+        "draft": false
+      }
+    },
+    {
+      "id": "request_reviewers",
+      "label": "Route the pull request to reviewers",
+      "command_id": "github.request_pull_request_reviewers",
+      "inputs_template": {
+        "pull_number": "{{nodes.open_pull_request.pull_request.number}}",
+        "reviewers": "{{ctx.reviewers}}",
+        "team_reviewers": "{{ctx.team_reviewers}}"
+      }
+    },
+    {
+      "id": "verify_checks",
+      "label": "Verify checks on the delivered commit",
+      "command_id": "github.list_check_runs",
+      "inputs_template": {
+        "ref": "{{nodes.write_change.commit_sha}}",
+        "filter": "latest",
+        "per_page": 30
+      }
+    }
+  ],
+  "outputs": [
+    "A confirmed source issue",
+    "A drift-protected work branch",
+    "A committed file change",
+    "A review-ready pull request",
+    "Optional reviewer routing",
+    "The latest check-run state for the delivered commit"
+  ],
+  "safety": {
+    "writes_require_human_approval": true,
+    "source_drift_guard": "expected_source_sha",
+    "merge_included": false,
+    "secrets_in_payload": false
+  }
+}
