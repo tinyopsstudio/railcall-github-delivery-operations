@@ -58,3 +58,7 @@ Replace the sample SHA and reviewer with values from the target repository. Set 
 
 - Module: <https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations>
 - Workflow: <https://railcall.ai/marketplace/tinyops-studio-llc/github-issue-to-reviewed-pr>
+
+## Setup help
+
+For teams that want this workflow configured and validated for one repository, TinyOps offers a [$499 managed setup](https://tinyopsstudio.com/railcall-github-delivery-operations-setup). The fixed scope includes a least-privilege permission map, approval rules, smoke-test evidence, an operator runbook, and one revision. GitHub credentials remain in the client's own RailCall vault.

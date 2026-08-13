@@ -5,3 +5,5 @@ The workflow reads the source issue, creates a work branch only when the expecte
 Every GitHub mutation requires human approval. Source drift stops branch creation. Reviewer routing is optional. The workflow deliberately contains no merge step, so the repository owner retains the final integration decision.
 
 Requires the free `tinyops-studio-llc/github-delivery-operations` RailCall module and repository-scoped GitHub credentials in the RailCall execution environment.
+
+Need hands-on configuration? TinyOps offers a [$499 managed setup](https://tinyopsstudio.com/railcall-github-delivery-operations-setup) for one repository, including a least-privilege permission map, approval rules, smoke-test evidence, and an operator runbook. GitHub credentials remain in the client's own RailCall vault.
