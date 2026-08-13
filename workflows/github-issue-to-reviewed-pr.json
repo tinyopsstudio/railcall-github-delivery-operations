@@ -4,7 +4,7 @@
   "description": "Turn an approved GitHub issue into a review-ready pull request with source-drift protection, approval-gated writes, reviewer routing, and check-run verification. The workflow stops before merge.",
   "kind": "canvas",
   "category": "Eng",
-  "version": "v1.0.1",
+  "version": "v1.0.2",
   "approval": "require_human",
   "module_dependency": {
     "id": "tinyops-studio-llc/github-delivery-operations",
