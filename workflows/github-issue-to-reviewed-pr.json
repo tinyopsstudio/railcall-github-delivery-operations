@@ -1,5 +1,5 @@
 {
-  "id": "tinyops-studio-llc/github-issue-to-pr",
+  "id": "tinyops-studio-llc/github-issue-to-reviewed-pr",
   "title": "GitHub Issue to Reviewed Pull Request",
   "description": "Turn an approved GitHub issue into a review-ready pull request with source-drift protection, approval-gated writes, reviewer routing, and check-run verification. The workflow stops before merge.",
   "kind": "canvas",
@@ -21,7 +21,7 @@
     "allow_irreversible": true
   },
   "engine_spec": {
-    "id": "github-issue-to-pr",
+    "id": "github-issue-to-reviewed-pr",
     "title": "GitHub Issue to Reviewed Pull Request",
     "version": "v1.1.2",
     "context": {

@@ -84,7 +84,8 @@ def test_engine_spec_is_runnable_and_capability_scoped():
     module_commands = {command["id"] for command in module["commands"]}
     expected_action_ids = {command_id.replace(".", "_") for command_id in module_commands}
 
-    assert engine["id"] == "github-issue-to-pr"
+    assert workflow["id"] == "tinyops-studio-llc/github-issue-to-reviewed-pr"
+    assert engine["id"] == "github-issue-to-reviewed-pr"
     assert engine["version"] == workflow["version"]
     assert engine["capabilities"] == workflow["capabilities"]
     assert engine["capabilities"] == {
