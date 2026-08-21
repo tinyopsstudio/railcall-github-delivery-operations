@@ -101,7 +101,7 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
         self.assertTrue(manifest["homepage"].startswith("https://"))
         self.assertTrue(manifest["tests_url"].startswith("https://"))
         self.assertEqual("https://youtu.be/8BdXElhlT5s", manifest["video_url"])
-        self.assertEqual("Developer Tools", manifest["category"])
+        self.assertEqual("Eng", manifest["category"])
         self.assertEqual("github", manifest["credential_spec"]["provider"])
         self.assertEqual(["token", "owner", "repo"], manifest["credential_spec"]["required"])
         self.assertEqual(["api_url"], manifest["credential_spec"]["optional"])

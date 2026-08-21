@@ -4,13 +4,13 @@
   "version": "1.2.0",
   "description": "GitHub delivery operations for governed issue-to-deploy work. Eighteen commands complement RailCall's built-in issue list/create commands, with compact receipts, bounded read retries, single-attempt writes, race-safe branch creation and pull-request merges, and GitHub.com plus GitHub Enterprise support.\n\nISSUES: github.get_issue {\"issue_number\":42}; github.update_issue {\"issue_number\":42,\"state\":\"closed\"}; github.add_issue_comment {\"issue_number\":42,\"body\":\"Deployed to staging.\"}.\n\nPULL REQUESTS: github.list_pull_requests {\"state\":\"open\",\"per_page\":10}; github.get_pull_request {\"pull_number\":17}; github.create_pull_request {\"title\":\"Ship v1.1\",\"head\":\"release/v1.1\",\"base\":\"main\",\"draft\":true}; github.request_pull_request_reviewers {\"pull_number\":17,\"reviewers\":[\"octocat\"]}; github.merge_pull_request {\"pull_number\":17,\"merge_method\":\"squash\",\"expected_head_sha\":\"0123456789abcdef0123456789abcdef01234567\"}.\n\nFILES AND BRANCHES: github.put_file {\"path\":\"docs/release.md\",\"message\":\"Add release notes\",\"content\":\"Ready\\n\",\"branch\":\"release/v1.1\"}; github.list_branches {\"protected\":true,\"per_page\":20}; github.create_branch {\"branch\":\"release/v1.1\",\"source_branch\":\"main\",\"expected_source_sha\":\"0123456789abcdef0123456789abcdef01234567\"}; github.delete_branch {\"branch\":\"release/v1.0\"}; github.get_branch_protection {\"branch\":\"main\"}.\n\nCI/CD: github.dispatch_workflow {\"workflow_id\":\"deploy.yml\",\"ref\":\"main\",\"inputs\":{\"environment\":\"staging\"}}; github.list_workflow_runs {\"branch\":\"main\",\"status\":\"failure\",\"per_page\":10}; github.get_workflow_run {\"run_id\":123456}; github.cancel_workflow_run {\"run_id\":123456}; github.list_check_runs {\"ref\":\"main\",\"filter\":\"latest\",\"per_page\":20}.\n\nSETUP: save one local RailCall vault entry named github: {\"token\":\"YOUR_TOKEN\",\"owner\":\"your-org\",\"repo\":\"your-repo\"}. For GitHub Enterprise Server, add \"api_url\":\"https://github.example.com/api/v3\" to that same entry. Use a fine-grained token or GitHub App token limited to the repository permissions needed: Metadata read, Issues read/write, Pull requests read/write, Contents read/write, and Actions read/write. Secrets never enter command inputs or receipts. Writes fail closed when transport confirmation is lost and are never retried automatically. contest:2026Q3",
   "provider": "github",
-  "category": "Developer Tools",
+  "category": "Eng",
   "homepage": "https://github.com/tinyopsstudio/railcall-github-delivery-operations",
   "tests_url": "https://github.com/tinyopsstudio/railcall-github-delivery-operations/actions",
   "video_url": "https://youtu.be/8BdXElhlT5s",
   "credential_spec": {
     "provider": "github",
-    "category": "Developer Tools",
+    "category": "Eng",
     "name": "GitHub repository access",
     "required": [
       "token",
