@@ -78,7 +78,7 @@ railcall market install tinyops-studio-llc/github-delivery-operations
 Restart Studio or reload modules after installation.
 
 The published `module.json`, `module.sig`, and `handlers/handler.py` are the
-exact signed runtime bundle for marketplace version `1.1.0`. The tests and
+exact signed runtime bundle for marketplace version `1.2.0`. The tests and
 documentation are published for independent review.
 
 ## Configure

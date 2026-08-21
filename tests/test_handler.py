@@ -92,7 +92,7 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
     def test_manifest_exposes_eighteen_matching_commands_and_store_metadata(self):
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
         commands = manifest["commands"]
-        self.assertEqual("1.1.0", manifest["version"])
+        self.assertEqual("1.2.0", manifest["version"])
         self.assertEqual(18, len(commands))
         self.assertEqual(18, len({item["id"] for item in commands}))
         self.assertEqual("github", manifest["auth"]["vault_provider"])
@@ -100,6 +100,12 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
         self.assertTrue(manifest["auth"]["docs"].startswith("https://"))
         self.assertTrue(manifest["homepage"].startswith("https://"))
         self.assertTrue(manifest["tests_url"].startswith("https://"))
+        self.assertEqual("https://youtu.be/8BdXElhlT5s", manifest["video_url"])
+        self.assertEqual("Developer Tools", manifest["category"])
+        self.assertEqual("github", manifest["credential_spec"]["provider"])
+        self.assertEqual(["token", "owner", "repo"], manifest["credential_spec"]["required"])
+        self.assertEqual(["api_url"], manifest["credential_spec"]["optional"])
+        self.assertEqual("write", manifest["credential_spec"]["read_write"])
         self.assertGreaterEqual(len(manifest["description"]), 1_500)
         self.assertLessEqual(len(manifest["description"]), 2_500)
         for command in commands:
@@ -107,6 +113,7 @@ class GitHubDeliveryHandlerTests(unittest.TestCase):
             self.assertTrue(callable(getattr(handler, function_name, None)))
             self.assertTrue(command["preview"])
             self.assertTrue(command["receipt_required"])
+            self.assertEqual(["github"], command["requires"])
             if command["mode"] != "read":
                 self.assertEqual("write_requires_approval", command["mode"])
 
