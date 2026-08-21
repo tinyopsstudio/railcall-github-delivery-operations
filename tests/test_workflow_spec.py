@@ -74,3 +74,47 @@ def test_graph_references_only_known_nodes():
     for edge in workflow["edges"]:
         assert edge["to"] in node_ids
         assert edge["from"] == "trigger" or edge["from"] in node_ids
+
+
+def test_engine_spec_is_runnable_and_capability_scoped():
+    workflow = load_json(WORKFLOW_PATH)
+    engine = workflow["engine_spec"]
+    module = load_json(MODULE_PATH)
+    module_commands = {command["id"] for command in module["commands"]}
+    expected_action_ids = {command_id.replace(".", "_") for command_id in module_commands}
+
+    assert engine["id"] == "github-issue-to-pr"
+    assert engine["version"] == workflow["version"]
+    assert engine["capabilities"] == workflow["capabilities"]
+    assert engine["capabilities"] == {
+        "providers": ["github"],
+        "max_spend_cents": 0,
+        "allow_irreversible": True,
+    }
+
+    nodes = engine["nodes"]
+    assert len(nodes) == len(workflow["nodes"])
+    assert all(node["type"] == "effect" for node in nodes)
+    assert all(node["provider"] == "github" for node in nodes)
+    assert {node["action_id"] for node in nodes} <= expected_action_ids
+
+
+def test_engine_spec_preserves_order_guards_and_bindings():
+    workflow = load_json(WORKFLOW_PATH)
+    nodes = {node["id"]: node for node in workflow["engine_spec"]["nodes"]}
+
+    assert nodes["create_work_branch"]["parent"] == "inspect_issue"
+    assert nodes["create_work_branch"]["args"]["expected_source_sha"] == "{{ctx.expected_source_sha}}"
+    assert nodes["write_change"]["parent"] == "create_work_branch"
+    assert nodes["open_pull_request"]["parent"] == "write_change"
+    assert nodes["request_reviewers"]["cond"] == {"ctx": "reviewers_present", "eq": True}
+    assert nodes["request_reviewers"]["args"]["pull_number"] == "{{nodes.open_pull_request.pull_request.number}}"
+    assert nodes["verify_checks"]["args"]["ref"] == "{{nodes.write_change.commit_sha}}"
+
+
+def test_workflow_storefront_links_are_present():
+    workflow = load_json(WORKFLOW_PATH)
+
+    assert workflow["homepage"].startswith("https://github.com/tinyopsstudio/")
+    assert workflow["tests_url"].startswith("https://github.com/tinyopsstudio/")
+    assert workflow["video_url"] == "https://youtu.be/8BdXElhlT5s"

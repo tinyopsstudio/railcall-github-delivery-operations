@@ -57,7 +57,7 @@ Replace the sample SHA and reviewer with values from the target repository. Set 
 ## Marketplace
 
 - Module: <https://railcall.ai/marketplace/tinyops-studio-llc/github-delivery-operations>
-- Workflow: <https://railcall.ai/marketplace/tinyops-studio-llc/github-issue-to-reviewed-pr>
+- Workflow: <https://railcall.ai/marketplace/tinyops-studio-llc/github-issue-to-pr>
 
 ## Setup help
 
