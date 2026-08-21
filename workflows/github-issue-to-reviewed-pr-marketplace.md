@@ -1,6 +1,6 @@
 GitHub Issue to Reviewed Pull Request is a runnable, capability-scoped RailCall workflow for teams that want a controlled path from an approved issue to a review-ready pull request.
 
-The v1.1.1 workflow ships an executable `engine_spec`. RailCall can render the per-run context form, plan the complete DAG, show the GitHub blast radius, enforce the declared zero-dollar spend ceiling, require human approval for every repository mutation, and issue signed receipts for each node.
+The v1.1.2 workflow ships an executable `engine_spec` with typed nodes and explicit edges. RailCall can render the per-run context form, plan the complete DAG, show the GitHub blast radius, enforce the declared zero-dollar spend ceiling, require human approval for every repository mutation, and issue signed receipts for each node.
 
 What the workflow does:
 
@@ -27,7 +27,7 @@ Provide issue number `42`, source branch `main`, the current 40-character source
 Requirements:
 
 - RailCall station v0.51 or later for executable workflow support.
-- Free companion module `tinyops-studio-llc/github-delivery-operations` v1.1.0 or later.
+- Free companion module `tinyops-studio-llc/github-delivery-operations` v1.2.0 or later.
 - Repository-scoped GitHub credentials configured in the RailCall vault with only the permissions required for the chosen actions.
 
 The linked demo video shows the companion GitHub module and its governed execution model.

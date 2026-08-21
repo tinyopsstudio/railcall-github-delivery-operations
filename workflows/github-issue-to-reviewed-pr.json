@@ -4,11 +4,11 @@
   "description": "Turn an approved GitHub issue into a review-ready pull request with source-drift protection, approval-gated writes, reviewer routing, and check-run verification. The workflow stops before merge.",
   "kind": "canvas",
   "category": "Eng",
-  "version": "v1.1.1",
+  "version": "v1.1.2",
   "approval": "require_human",
   "module_dependency": {
     "id": "tinyops-studio-llc/github-delivery-operations",
-    "minimum_version": "1.1.0"
+    "minimum_version": "1.2.0"
   },
   "homepage": "https://github.com/tinyopsstudio/railcall-github-delivery-operations",
   "tests_url": "https://github.com/tinyopsstudio/railcall-github-delivery-operations/actions",
@@ -23,7 +23,7 @@
   "engine_spec": {
     "id": "github-issue-to-pr",
     "title": "GitHub Issue to Reviewed Pull Request",
-    "version": "v1.1.1",
+    "version": "v1.1.2",
     "context": {
       "issue_number": 1,
       "source_branch": "main",
@@ -46,6 +46,28 @@
       "max_spend_cents": 0,
       "allow_irreversible": true
     },
+    "edges": [
+      {
+        "from": "inspect_issue",
+        "to": "create_work_branch"
+      },
+      {
+        "from": "create_work_branch",
+        "to": "write_change"
+      },
+      {
+        "from": "write_change",
+        "to": "open_pull_request"
+      },
+      {
+        "from": "open_pull_request",
+        "to": "request_reviewers"
+      },
+      {
+        "from": "open_pull_request",
+        "to": "verify_checks"
+      }
+    ],
     "nodes": [
       {
         "id": "inspect_issue",

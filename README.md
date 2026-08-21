@@ -197,9 +197,9 @@ read and the approved write.
 
 ## Verification
 
-The v1.1 release was validated through three layers:
+The v1.2 release was validated through three layers:
 
-- 25 unit and bundle tests, including exact Ed25519 signature verification
+- 34 module, bundle, and executable-workflow tests, including exact Ed25519 signature verification
 - A live disposable-repository cycle created and deleted a branch, fetched a
   real 64-bit Actions run, and read its latest check run
 - The CI workflow reruns the public test suite on Python 3.11, 3.12, and 3.13

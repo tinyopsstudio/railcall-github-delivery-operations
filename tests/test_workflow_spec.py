@@ -1,4 +1,5 @@
 import json
+import unittest
 from pathlib import Path
 
 
@@ -97,6 +98,8 @@ def test_engine_spec_is_runnable_and_capability_scoped():
     assert all(node["type"] == "effect" for node in nodes)
     assert all(node["provider"] == "github" for node in nodes)
     assert {node["action_id"] for node in nodes} <= expected_action_ids
+    assert engine["edges"] == workflow["edges"][1:]
+    assert workflow["module_dependency"]["minimum_version"] == "1.2.0"
 
 
 def test_engine_spec_preserves_order_guards_and_bindings():
@@ -118,3 +121,12 @@ def test_workflow_storefront_links_are_present():
     assert workflow["homepage"].startswith("https://github.com/tinyopsstudio/")
     assert workflow["tests_url"].startswith("https://github.com/tinyopsstudio/")
     assert workflow["video_url"] == "https://youtu.be/8BdXElhlT5s"
+
+
+def load_tests(loader, tests, pattern):
+    """Expose the function-style workflow tests to unittest discovery and CI."""
+    suite = unittest.TestSuite()
+    for name, function in sorted(globals().items()):
+        if name.startswith("test_") and callable(function):
+            suite.addTest(unittest.FunctionTestCase(function, description=name))
+    return suite

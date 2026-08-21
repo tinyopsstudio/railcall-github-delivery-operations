@@ -52,7 +52,7 @@ Every write is previewed and requires approval. Reads use bounded retries for te
 
 ## Quality and limits
 
-The signed v1.1 bundle passes 25 tests on Python 3.11, 3.12, and 3.13. A clean marketplace install loaded all 18 commands, and live smoke tests exercised real GitHub branch and Actions APIs.
+The signed v1.2 bundle passes 34 module, bundle, and executable-workflow tests on Python 3.11, 3.12, and 3.13. A clean marketplace install loaded all 18 commands, and live smoke tests exercised real GitHub branch and Actions APIs.
 
 One vault entry targets one repository. The module uses GitHub REST APIs and does not cover Projects v2, releases, deployments, or organization administration. GitHub permissions and branch rules can still reject an approved write with a clear error.
 
